@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Optional, Protocol, TypeVar, 
 import bpy
 from bpy.app.translations import pgettext
 from bpy.props import FloatProperty, PointerProperty, StringProperty
-from bpy.types import Armature, Bone, Material, Object, PropertyGroup, UILayout
+from bpy.types import Armature, Bone, Context, Material, Object, PropertyGroup, UILayout
 
 from ..common.logger import get_logger
 from ..common.vrm0 import human_bone as vrm0_human_bone
@@ -199,10 +199,27 @@ class MeshObjectPropertyGroup(PropertyGroup):
     def poll_bpy_object(self, obj: object) -> bool:
         return isinstance(obj, Object) and obj.type == "MESH"
 
+    def update_bpy_object(self, _context: Context) -> None:
+        self.reset_saved_bpy_object_name()
+
     bpy_object: PointerProperty(  # type: ignore[valid-type]
         type=Object,
         poll=poll_bpy_object,
+        update=update_bpy_object,
     )
+
+    saved_bpy_object_name: StringProperty()  # type: ignore[valid-type]
+    """bpy_object.nameを保存しておく。これはbpy_objectの変更検知や再設定に利用する.
+
+    SKkeeperが広く使われているようだが、これはメッシュオブジェクトを再作成する。
+    その変更検知と、変更された際の再設定を行う。
+    """
+
+    def reset_saved_bpy_object_name(self) -> None:
+        bpy_object = self.bpy_object
+        bpy_object_name = bpy_object.name if bpy_object else ""
+        if self.saved_bpy_object_name != bpy_object_name:
+            self.saved_bpy_object_name = bpy_object_name
 
     if TYPE_CHECKING:
         # This code is auto generated.
@@ -210,6 +227,7 @@ class MeshObjectPropertyGroup(PropertyGroup):
         mesh_object_name: str  # type: ignore[no-redef]
         value: str  # type: ignore[no-redef]
         bpy_object: Optional[Object]  # type: ignore[no-redef]
+        saved_bpy_object_name: str  # type: ignore[no-redef]
 
 
 class MaterialPropertyGroup(PropertyGroup):
