@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+import inspect
 import math
+import traceback
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, TypeVar, cast
 
 import bpy
 from bpy.props import (
@@ -23,6 +26,7 @@ from bpy.types import (
 )
 from mathutils import Matrix, Quaternion
 
+from ..common import convert_any
 from ..common.logger import get_logger
 from ..common.preferences import VrmAddonPreferences
 from .mtoon1.property_group import Mtoon1MaterialPropertyGroup
@@ -488,31 +492,69 @@ def get_armature_extension(
     return extension
 
 
+__Extension = TypeVar("__Extension")
+
+
+def type_assertion_in_unittest(
+    extension: object, expected_type: type[__Extension]
+) -> __Extension:
+    """unittest実行時に、実際のクラスと型アノテーションのパッケージが異なる場合がある.これに対応する."""
+    # テスト実行時では無い場合は、そのままTypeError
+    frame_paths = [Path(frame.filename) for frame in traceback.extract_stack()]
+    if not any("unittest" in path.parts for path in frame_paths) or any(
+        "tests" in path.parts for path in frame_paths
+    ):
+        raise TypeError
+
+    if expected_type.__name__ != type(extension).__name__:
+        raise TypeError
+
+    annotated_class_file_path_str = inspect.getfile(expected_type)
+    if not annotated_class_file_path_str:
+        message = f"No annotated extension class file path for {expected_type}"
+        raise AssertionError(message)
+
+    extension_class_file_path_str = inspect.getfile(
+        type(convert_any.to_object(extension))
+    )
+    if not extension_class_file_path_str:
+        message = f"No extension class file path for {type(extension)}"
+        raise AssertionError(message)
+
+    if (
+        Path(annotated_class_file_path_str).readlink()
+        == Path(extension_class_file_path_str).readlink()
+    ):
+        return cast("__Extension", extension)
+
+    raise TypeError
+
+
 def get_node_tree_extension(
     node_tree: NodeTree,
 ) -> VrmAddonNodeTreeExtensionPropertyGroup:
     extension = getattr(node_tree, "vrm_addon_extension", None)
-    if not isinstance(extension, VrmAddonNodeTreeExtensionPropertyGroup):
-        raise TypeError
-    return extension
+    if isinstance(extension, VrmAddonNodeTreeExtensionPropertyGroup):
+        return extension
+    return type_assertion_in_unittest(extension, VrmAddonNodeTreeExtensionPropertyGroup)
 
 
 def get_scene_extension(scene: Scene) -> VrmAddonSceneExtensionPropertyGroup:
     extension = getattr(scene, "vrm_addon_extension", None)
-    if not isinstance(extension, VrmAddonSceneExtensionPropertyGroup):
-        raise TypeError
-    return extension
+    if isinstance(extension, VrmAddonSceneExtensionPropertyGroup):
+        return extension
+    return type_assertion_in_unittest(extension, VrmAddonSceneExtensionPropertyGroup)
 
 
 def get_bone_extension(bone: Bone) -> VrmAddonBoneExtensionPropertyGroup:
     extension = getattr(bone, "vrm_addon_extension", None)
-    if not isinstance(extension, VrmAddonBoneExtensionPropertyGroup):
-        raise TypeError
-    return extension
+    if isinstance(extension, VrmAddonBoneExtensionPropertyGroup):
+        return extension
+    return type_assertion_in_unittest(extension, VrmAddonBoneExtensionPropertyGroup)
 
 
 def get_object_extension(obj: Object) -> VrmAddonObjectExtensionPropertyGroup:
     extension = getattr(obj, "vrm_addon_extension", None)
-    if not isinstance(extension, VrmAddonObjectExtensionPropertyGroup):
-        raise TypeError
-    return extension
+    if isinstance(extension, VrmAddonObjectExtensionPropertyGroup):
+        return extension
+    return type_assertion_in_unittest(extension, VrmAddonObjectExtensionPropertyGroup)
