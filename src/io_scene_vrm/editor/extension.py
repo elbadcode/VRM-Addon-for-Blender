@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+import inspect
 import math
+import traceback
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Optional, TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, TypeVar, cast
 
 import bpy
 from bpy.props import (
@@ -23,6 +26,7 @@ from bpy.types import (
 )
 from mathutils import Matrix, Quaternion
 
+from ..common import convert_any
 from ..common.logger import get_logger
 from ..common.preferences import VrmAddonPreferences
 from .mtoon1.property_group import Mtoon1MaterialPropertyGroup
@@ -498,6 +502,76 @@ def get_armature_extension(
     return get_vrm_addon_extension_or_raise(
         armature, VrmAddonArmatureExtensionPropertyGroup
     )
+
+
+__Extension = TypeVar("__Extension")
+
+
+def type_assertion_in_unittest(
+    extension: object, expected_type: type[__Extension]
+) -> __Extension:
+    # テスト実行時では無い場合は、そのままTypeError
+    frame_paths = [Path(frame.filename) for frame in traceback.extract_stack()]
+    if not any("unittest" in path.parts for path in frame_paths) or any(
+        "tests" in path.parts for path in frame_paths
+    ):
+        raise TypeError
+
+    if expected_type.__name__ != type(extension).__name__:
+        raise TypeError
+
+    annotated_class_file_path_str = inspect.getfile(expected_type)
+    if not annotated_class_file_path_str:
+        message = f"No annotated extension class file path for {expected_type}"
+        raise AssertionError(message)
+
+    extension_class_file_path_str = inspect.getfile(
+        type(convert_any.to_object(extension))
+    )
+    if not extension_class_file_path_str:
+        message = f"No extension class file path for {type(extension)}"
+        raise AssertionError(message)
+
+    if (
+        Path(annotated_class_file_path_str).readlink()
+        == Path(extension_class_file_path_str).readlink()
+    ):
+        return cast("__Extension", extension)
+
+    raise TypeError
+
+
+def get_vrm_addon_extension_or_raise(
+    obj: object, expected_type: type[__Extension]
+) -> __Extension:
+    extension = getattr(obj, "vrm_addon_extension", None)
+    if isinstance(extension, expected_type):
+        return extension
+
+    # 以下はテスト実行時にパッケージの配置が異なることによるエラーを回避するための処理
+
+    default_message = f"{extension} is not a {expected_type} but {type(extension)}"
+    if expected_type.__name__ != type(extension).__name__:
+        raise TypeError(default_message)
+
+    annotated_class_file_path_str = inspect.getfile(expected_type)
+    if not annotated_class_file_path_str:
+        message = f"No annotated extension class file path for {expected_type}"
+        raise AssertionError(message)
+
+    extension_class_file_path_str = inspect.getfile(
+        type(convert_any.to_object(extension))
+    )
+    if not extension_class_file_path_str:
+        message = f"No extension class file path for {type(extension)}"
+        raise AssertionError(message)
+
+    if Path(annotated_class_file_path_str).resolve(strict=True) == Path(
+        extension_class_file_path_str
+    ).resolve(strict=True):
+        return cast("__Extension", extension)
+
+    raise TypeError(default_message)
 
 
 def get_node_tree_extension(
